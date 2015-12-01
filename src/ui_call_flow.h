@@ -86,6 +86,8 @@ struct call_flow_arrow {
     rtp_stream_t *stream;
     //! Stream packet count for this arrow
     int rtp_count;
+    //! Stream alive indicator
+    int rtp_alive;
     //! Stream arrow position
     int rtp_ind_pos;
     //! Number of screen lines this arrow uses

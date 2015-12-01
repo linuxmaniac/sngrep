@@ -645,6 +645,20 @@ call_flow_draw_rtp_stream(PANEL *panel, call_flow_arrow_t *arrow, int cline)
     if (!setting_has_value(SETTING_CF_SDP_INFO, "compressed"))
         cline++;
 
+    // Check if this rtpstream seems to be alive
+    if (arrow->rtp_count == stream_get_count(stream)) {
+        arrow->rtp_alive--;
+    } else {
+        arrow->rtp_alive = 5;
+    }
+
+    // Update internal packet counter for this stream
+    arrow->rtp_count = stream_get_count(stream);
+
+    // If stream is alive, change color
+    if (arrow->rtp_alive > 0)
+        wattron(win, COLOR_PAIR(CP_BLUE_ON_DEF));
+
     // Draw line between columns
     mvwhline(win, cline, startpos + 2, ACS_HLINE, distance);
     // Write the arrow at the end of the message (two arrows if this is a retrans)
@@ -654,10 +668,9 @@ call_flow_draw_rtp_stream(PANEL *panel, call_flow_arrow_t *arrow, int cline)
             mvwprintw(win, cline, endpos, "%d", stream->dport);
         }
         mvwaddch(win, cline, endpos - 2, '>');
-        if (arrow->rtp_count != stream_get_count(stream)) {
-            arrow->rtp_count = stream_get_count(stream);
-            arrow->rtp_ind_pos = (arrow->rtp_ind_pos + 1) % distance;
-            mvwaddch(win, cline, startpos + arrow->rtp_ind_pos + 2, '>');
+        if (arrow->rtp_alive > 0) {
+            arrow->rtp_ind_pos++;
+            mvwaddch(win, cline, startpos + (arrow->rtp_ind_pos % distance), '>');
         }
     } else {
         if (!setting_has_value(SETTING_CF_SDP_INFO, "compressed")) {
@@ -665,17 +678,16 @@ call_flow_draw_rtp_stream(PANEL *panel, call_flow_arrow_t *arrow, int cline)
             mvwprintw(win, cline, startpos - 4, "%d", stream->dport);
         }
         mvwaddch(win, cline, startpos + 2, '<');
-        if (arrow->rtp_count != stream_get_count(stream)) {
-            arrow->rtp_count = stream_get_count(stream);
-            arrow->rtp_ind_pos = (arrow->rtp_ind_pos + 1) % distance;
-            mvwaddch(win, cline, endpos - arrow->rtp_ind_pos - 2, '<');
+        if (arrow->rtp_alive > 0) {
+            arrow->rtp_ind_pos++;
+            mvwaddch(win, cline, endpos - (arrow->rtp_ind_pos % distance) - 2, '<');
         }
     }
 
     if (setting_has_value(SETTING_CF_SDP_INFO, "compressed"))
         mvwprintw(win, cline, startpos + (distance) / 2 - strlen(text) / 2 + 2, " %s ", text);
 
-    wattroff(win, A_BOLD | A_REVERSE);
+    wattroff(win, A_BOLD | A_REVERSE | COLOR_PAIR(CP_BLUE_ON_DEF));
 
     // Print timestamp
     timeval_to_time(stream->time, time);
@@ -880,6 +892,7 @@ call_flow_next_arrow(PANEL *panel, const call_flow_arrow_t *cur)
         next = sng_malloc(sizeof(call_flow_arrow_t));
         next->type = (stream->type == CAPTURE_PACKET_RTP) ? CF_ARROW_RTP : CF_ARROW_RTCP;
         next->stream = stream;
+        next->rtp_alive = 5;
     } else if (!stream) {
         /* a sip message goes next */
         // Create a new arrow to store next info
@@ -893,6 +906,7 @@ call_flow_next_arrow(PANEL *panel, const call_flow_arrow_t *cur)
             next = sng_malloc(sizeof(call_flow_arrow_t));
             next->type = (stream->type == CAPTURE_PACKET_RTP) ? CF_ARROW_RTP : CF_ARROW_RTCP;
             next->stream = stream;
+            next->rtp_alive = 5;
         } else {
             // Create a new arrow to store next info
             next = sng_malloc(sizeof(call_flow_arrow_t));
