@@ -239,6 +239,16 @@ call_list_draw_header(PANEL *panel)
 void
 call_list_draw_footer(PANEL *panel)
 {
+
+    int height, width, selcnt;
+
+    // Get panel info
+    call_list_info_t *info = call_list_info(panel);
+
+    // Let's draw the fixed elements of the screen
+    WINDOW *win = panel_window(panel);
+    getmaxyx(win, height, width);
+
     const char *keybindings[] = {
         key_action_key_str(ACTION_PREV_SCREEN), "Quit",
         key_action_key_str(ACTION_SHOW_FLOW), "Show",
@@ -246,14 +256,33 @@ call_list_draw_footer(PANEL *panel)
         key_action_key_str(ACTION_SHOW_HELP), "Help",
         key_action_key_str(ACTION_SAVE), "Save",
         key_action_key_str(ACTION_DISP_FILTER), "Search",
-        key_action_key_str(ACTION_SHOW_FLOW_EX), "Extended",
+        key_action_key_str(ACTION_SHOW_FLOW_EX), "Sel. XCID",
         key_action_key_str(ACTION_CLEAR_CALLS), "Clear",
         key_action_key_str(ACTION_SHOW_FILTERS), "Filter",
         key_action_key_str(ACTION_SHOW_SETTINGS), "Settings",
         key_action_key_str(ACTION_SHOW_COLUMNS), "Columns"
     };
 
-    draw_keybindings(panel, keybindings, 22);
+    if ((selcnt = call_group_count(info->group))) {
+        // Write a line all the footer width
+        wattron(win, COLOR_PAIR(CP_DEF_ON_CYAN));
+        clear_line(win, height - 1);
+        wattron(win, A_BOLD | COLOR_PAIR(CP_WHITE_ON_CYAN));
+        mvwprintw(win, height - 1, 1, "Selected ");
+        wattron(win, COLOR_PAIR(CP_BLACK_ON_CYAN));
+        wattroff(win, A_BOLD);
+        wprintw(win, "%d", selcnt);
+        wattron(win, A_BOLD | COLOR_PAIR(CP_WHITE_ON_CYAN));
+        wprintw(win, " dialog%s. Press ", selcnt > 1 ? "s": "");
+        wattron(win, COLOR_PAIR(CP_BLACK_ON_CYAN));
+        wattroff(win, A_BOLD);
+        wprintw(win, "Ctrl-W"); // TODO Keybinding
+        wattron(win, A_BOLD | COLOR_PAIR(CP_WHITE_ON_CYAN));
+        wprintw(win, " to unselect them.");
+        wattroff(win,COLOR_PAIR(CP_WHITE_ON_CYAN));
+    } else {
+        draw_keybindings(panel, keybindings, 22);
+    }
 }
 
 void
@@ -469,7 +498,7 @@ call_list_handle_key(PANEL *panel, int key)
     ui_t *next_panel;
     sip_call_group_t *group;
     int action = -1;
-    sip_call_t *call;
+    sip_call_t *call = NULL;
 
     // Sanity check, this should not happen
     if (!(info  = call_list_info(panel)))
@@ -574,8 +603,15 @@ call_list_handle_key(PANEL *panel, int key)
                 // Disable Autoscroll
                 info->autoscroll = 0;
                 break;
-            case ACTION_SHOW_FLOW:
             case ACTION_SHOW_FLOW_EX:
+                // Automatically add the call where the cursor is
+                call_group_add(info->group, sip_find_by_index(info->cur_call));
+
+                // For each call selected add its xcall
+                while ((call = call_group_get_next(info->group, call)))
+                    call_group_add(info->group, call_get_xcall(call));
+                break;
+            case ACTION_SHOW_FLOW:
             case ACTION_SHOW_RAW:
                 // Check we have calls in the list
                 if (info->cur_call == -1)
@@ -585,10 +621,6 @@ call_list_handle_key(PANEL *panel, int key)
                 // If not selected call, show current call flow
                 if (call_group_count(info->group) == 0)
                     call_group_add(group, sip_find_by_index(info->cur_call));
-
-                // Add xcall to the group
-                if (action == ACTION_SHOW_FLOW_EX)
-                    call_group_add(group, call_get_xcall(sip_find_by_index(info->cur_call)));
 
                 if (action == ACTION_SHOW_RAW) {
                     // Create a Call Flow panel
@@ -794,7 +826,7 @@ call_list_help(PANEL *panel)
     mvwprintw(help_win, 13, 2, "F1/h        Show this screen");
     mvwprintw(help_win, 14, 2, "F2/S        Save captured packages to a file");
     mvwprintw(help_win, 15, 2, "F3//        Display filtering (match string case insensitive)");
-    mvwprintw(help_win, 16, 2, "F4/X        Show selected call-flow (Extended) if available");
+    mvwprintw(help_win, 16, 2, "F4/X        Search for Calls with selected X-Call-Id Headers");
     mvwprintw(help_win, 17, 2, "F5          Clear call list (can not be undone!)");
     mvwprintw(help_win, 18, 2, "F6/R        Show selected call messages in raw mode");
     mvwprintw(help_win, 19, 2, "F7/F        Show filter options");
